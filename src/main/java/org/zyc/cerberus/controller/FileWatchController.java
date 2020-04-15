@@ -8,8 +8,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.zyc.cerberus.service.FileWatchService;
 
-import java.nio.file.*;
-
 /**
  * @Author: Zuo Yichen
  * @Date: 2020/4/13 23:38
@@ -23,11 +21,20 @@ public class FileWatchController {
     FileWatchService fileWatchService;
 
     @GetMapping("/watch/start")
-    public void fileWacth() {
+    public void start() {
         try {
-            fileWatchService.watch();
+            fileWatchService.start();
         } catch (Exception e) {
-            LOGGER.error("watch file has ex : {}", e.getMessage());
+            LOGGER.error("start file has ex : ", e);
+        }
+    }
+
+    @GetMapping("/watch/shutdown")
+    public void shutdown() {
+        try {
+            fileWatchService.shutdown();
+        } catch (Exception e) {
+            LOGGER.error("shutdown  has ex : ", e);
         }
     }
 }

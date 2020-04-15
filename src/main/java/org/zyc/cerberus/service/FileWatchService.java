@@ -3,13 +3,18 @@ package org.zyc.cerberus.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -17,11 +22,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @Date: 2020/4/13 23:42
  */
 @Service
-public class FileWatchService {
+public class FileWatchService implements ApplicationRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileWatchService.class);
     private static ExecutorService executorService = Executors.newFixedThreadPool(10);
     private final AtomicInteger imgIndex = new AtomicInteger(0);
-    private boolean stop = false;
+    AtomicBoolean stop = new AtomicBoolean();
 
     @Value("${file.watch.path}")
     String watchPath;
@@ -29,11 +34,12 @@ public class FileWatchService {
     @Value("${file.copy.path}")
     String copyPath;
 
-    public void watch() throws IOException, InterruptedException {
+    public void watch(List<String> oriPath, List<String> destPath) throws IOException, InterruptedException {
         WatchService watchService
                 = FileSystems.getDefault().newWatchService();
-
-        Path path = Paths.get(watchPath);
+        String watchedFilePath = getFilePath(oriPath);
+        String targetFilePath = getFilePath(destPath);
+        Path path = Paths.get(watchedFilePath);
         path.register(
                 watchService,
                 StandardWatchEventKinds.ENTRY_CREATE,
@@ -41,7 +47,7 @@ public class FileWatchService {
                 StandardWatchEventKinds.ENTRY_DELETE
         );
         WatchKey key;
-        while (!stop && (key = watchService.take()) != null) {
+        while ((key = watchService.take()) != null  && !stop.get()) {
             try {
                 for (WatchEvent<?> event : key.pollEvents()) {
                     LOGGER.info("Event kind: {}" + ". File affected: {}", event.kind(), event.context());
@@ -52,8 +58,8 @@ public class FileWatchService {
 //                            } catch (InterruptedException e) {
 //                                e.printStackTrace();
 //                            }
-                            File oldFile = new File(watchPath + event.context());
-                            File newFile = new File(copyPath + event.context() + imgIndex.getAndIncrement());
+                            File oldFile = new File(watchedFilePath + event.context());
+                            File newFile = new File(targetFilePath + event.context() + imgIndex.getAndIncrement());
                             try {
                                 Files.copy(oldFile.toPath(), newFile.toPath());
                                 LOGGER.info("copy file success");
@@ -69,5 +75,30 @@ public class FileWatchService {
                 key.reset();
             }
         }
+    }
+
+    private String getFilePath(List<String> paths) {
+        if (CollectionUtils.isEmpty(paths)) {
+            return watchPath;
+        }
+        String path = paths.get(0);
+        if (path.endsWith("\\") || path.endsWith("/")) {
+            return path;
+        }
+        return path + "/";
+    }
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        watch(args.getOptionValues("file.watch.path"),
+                args.getOptionValues("file.copy.path"));
+    }
+
+    public void shutdown() {
+        stop.set(true);
+    }
+
+    public void start() {
+        stop.getAndSet(false);
     }
 }
